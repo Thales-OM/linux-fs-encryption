@@ -23,6 +23,6 @@ clean:
 help:
 	@echo "📖 Доступные цели:"
 	@echo "  make install-deps  - Автоматически установить зависимости"
-	@echo "  make               - Собрить проект"
+	@echo "  make               - Собрать проект"
 	@echo "  make run           - Показать инструкцию по запуску"
 	@echo "  make clean         - Удалить бинарный файл"
