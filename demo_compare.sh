@@ -1,13 +1,15 @@
-#!/bin/bash
-set -eo pipefail
+#!/usr/bin/env bash
+set -euo pipefail
 
 TEST_DIR="$HOME/fscrypt_lab_test"
 PASSPHRASE="lab_demo_2026"
 PROTECTOR_NAME="lab_protector"
 
 pause() {
-    read -p "Press Enter to continue..." -r
-    echo ""
+    if [ -t 0 ]; then
+        read -p "Press Enter to continue..." -r
+        echo ""
+    fi
 }
 
 install_fscrypt() {
@@ -34,18 +36,33 @@ install_fscrypt() {
 full_cleanup() {
     echo "Cleaning up previous run..."
     set +e
+
+    # 1. Ensure directory is locked and remove it
     if [ -d "$TEST_DIR" ]; then
         printf "%s\n" "$PASSPHRASE" | fscrypt unlock "$TEST_DIR" 2>/dev/null || true
         fscrypt lock "$TEST_DIR" 2>/dev/null || true
+        rm -rf "$TEST_DIR"
     fi
 
-    PROT_ID=$(fscrypt metadata list 2>/dev/null | awk -v name="$PROTECTOR_NAME" '$2 == name {print $1}')
+    # 2. Find & destroy protector by name (robust across fscrypt versions)
+    # Output format typically: ID NAME TYPE
+    PROT_ID=$(fscrypt metadata list 2>/dev/null | grep -w "$PROTECTOR_NAME" | head -1 | awk '{print $1}')
+    
     if [ -n "$PROT_ID" ]; then
-        echo "  -> Destroying existing protector: $PROT_ID"
-        sudo fscrypt metadata destroy-protector "$PROT_ID" 2>/dev/null || true
+        echo "  -> Found existing protector: $PROT_ID"
+        # Some fscrypt versions require --filesystem. Fallback gracefully.
+        FS_MOUNT=$(df "$HOME" 2>/dev/null | tail -1 | awk '{print $NF}')
+        if [ -n "$FS_MOUNT" ]; then
+            sudo fscrypt metadata destroy-protector "$PROT_ID" --filesystem="$FS_MOUNT" 2>/dev/null || \
+            sudo fscrypt metadata destroy-protector "$PROT_ID" 2>/dev/null || true
+        else
+            sudo fscrypt metadata destroy-protector "$PROT_ID" 2>/dev/null || true
+        fi
+        echo "  -> Protector destroyed."
+    else
+        echo "  -> No existing protector found."
     fi
 
-    rm -rf "$TEST_DIR"
     set -e
     echo "  -> Cleanup complete."
 }
@@ -69,7 +86,8 @@ mkdir -p "$TEST_DIR"
 pause
 
 echo "4. Enabling transparent encryption..."
-printf "y\n%s\n%s\n" "$PASSPHRASE" "$PASSPHRASE" | fscrypt encrypt "$TEST_DIR" --name="$PROTECTOR_NAME"
+# --name only prompts for passphrase twice. Removed erroneous 'y' input.
+printf "%s\n%s\n" "$PASSPHRASE" "$PASSPHRASE" | fscrypt encrypt "$TEST_DIR" --name="$PROTECTOR_NAME"
 pause
 
 echo "5. Writing test data..."
@@ -81,38 +99,4 @@ echo "6. Reading data (transparent decryption)..."
 echo "--- report.txt ---"
 cat "$TEST_DIR/report.txt"
 echo "--- notes.txt ---"
-cat "$TEST_DIR/notes.txt"
-pause
-
-echo "7. Verifying encryption status..."
-fscrypt status "$TEST_DIR"
-pause
-
-echo "8. Inspecting raw encrypted data on disk..."
-RAW_FILE=$(find "$TEST_DIR" -maxdepth 1 -type f 2>/dev/null | head -1)
-if [ -n "$RAW_FILE" ]; then
-    echo "Hex dump of encrypted file:"
-    sudo hexdump -C "$RAW_FILE" | head -6
-else
-    echo "No files found in directory."
-fi
-pause
-
-echo "9. Locking directory (revoking access)..."
-fscrypt lock "$TEST_DIR"
-pause
-
-echo "10. Attempting access while locked..."
-cat "$TEST_DIR/report.txt" 2>&1 || echo "   [ACCESS DENIED - Directory locked]"
-pause
-
-echo "11. Unlocking directory..."
-printf "%s\n" "$PASSPHRASE" | fscrypt unlock "$TEST_DIR"
-pause
-
-echo "12. Verifying access restored..."
-cat "$TEST_DIR/report.txt"
-pause
-
-echo ""
-echo "=== Demo Complete ==="
+cat "$TEST_DIR/
