@@ -31,36 +31,33 @@ install_fscrypt() {
     fi
 }
 
-cleanup() {
-    fscrypt lock "$TEST_DIR" 2>/dev/null || true
-    rm -rf "$TEST_DIR"
-}
-
 full_cleanup() {
     echo "Cleaning up previous run..."
-    fscrypt lock "$TEST_DIR" 2>/dev/null || true
-    
+    set +e
     if [ -d "$TEST_DIR" ]; then
-        fscrypt status "$TEST_DIR" 2>/dev/null && \
-            printf "%s\n" "$PASSPHRASE" | fscrypt unlock "$TEST_DIR" 2>/dev/null || true
+        printf "%s\n" "$PASSPHRASE" | fscrypt unlock "$TEST_DIR" 2>/dev/null || true
+        fscrypt lock "$TEST_DIR" 2>/dev/null || true
     fi
-    
+
+    PROT_ID=$(fscrypt metadata list 2>/dev/null | awk -v name="$PROTECTOR_NAME" '$2 == name {print $1}')
+    if [ -n "$PROT_ID" ]; then
+        echo "  -> Destroying existing protector: $PROT_ID"
+        sudo fscrypt metadata destroy-protector "$PROT_ID" 2>/dev/null || true
+    fi
+
     rm -rf "$TEST_DIR"
-    
-    METADATA_DIR="/.fscrypt"
-    if [ -f "$METADATA_DIR/protectors/$(echo -n "$PROTECTOR_NAME" | sha256sum | cut -d' ' -f1).name" ]; then
-        printf "yes\n" | fscrypt metadata destroy-protector "$PROTECTOR_NAME" 2>/dev/null || true
-    fi
+    set -e
+    echo "  -> Cleanup complete."
 }
 
-trap cleanup EXIT
+trap 'echo "Exiting..."; full_cleanup' EXIT
 
 echo "=== Fscrypt Transparent Encryption Demo ==="
 install_fscrypt
 pause
 
 echo "1. Initializing fscrypt configuration..."
-sudo fscrypt setup 2>/dev/null || true
+sudo fscrypt setup 2>/dev/null || echo "  -> Already initialized or skipped."
 pause
 
 echo "2. Cleaning up any previous test data..."
@@ -72,7 +69,7 @@ mkdir -p "$TEST_DIR"
 pause
 
 echo "4. Enabling transparent encryption..."
-printf "%s\n%s\n" "$PASSPHRASE" "$PASSPHRASE" | fscrypt encrypt "$TEST_DIR" --name="$PROTECTOR_NAME"
+printf "y\n%s\n%s\n" "$PASSPHRASE" "$PASSPHRASE" | fscrypt encrypt "$TEST_DIR" --name="$PROTECTOR_NAME"
 pause
 
 echo "5. Writing test data..."
@@ -92,10 +89,12 @@ fscrypt status "$TEST_DIR"
 pause
 
 echo "8. Inspecting raw encrypted data on disk..."
-RAW_FILE=$(find "$TEST_DIR" -maxdepth 1 -type f | head -1)
+RAW_FILE=$(find "$TEST_DIR" -maxdepth 1 -type f 2>/dev/null | head -1)
 if [ -n "$RAW_FILE" ]; then
     echo "Hex dump of encrypted file:"
     sudo hexdump -C "$RAW_FILE" | head -6
+else
+    echo "No files found in directory."
 fi
 pause
 
