@@ -2,7 +2,7 @@
 set -euo pipefail
 TEST_DIR="$HOME/fscrypt_lab_test"
 PASSPHRASE="lab_demo_2026"
-PROTECTOR_NAME="lab_protector"
+PROTECTOR_NAME="lab_protector2"
 pause() {
     if [ -t 0 ]; then
         read -p "Press Enter to continue..." -r
