@@ -43,7 +43,7 @@ rm -rf "$TEST_DIR"
 mkdir -p "$TEST_DIR"
 
 echo "3. Enabling transparent encryption..."
-printf "%s\n" "$PASSPHRASE" | fscrypt encrypt --quiet "$TEST_DIR"
+printf "%s\n%s\n" "$PASSPHRASE" "$PASSPHRASE" | fscrypt encrypt "$TEST_DIR" --name="lab_protector"
 
 echo "4. Writing test data..."
 echo "Confidential lab report 2026" > "$TEST_DIR/report.txt"
@@ -72,7 +72,7 @@ echo "9. Attempting access while locked..."
 cat "$TEST_DIR/report.txt" 2>&1 || echo "   [ACCESS DENIED - Directory locked]"
 
 echo "10. Unlocking directory..."
-printf "%s\n" "$PASSPHRASE" | fscrypt unlock --quiet "$TEST_DIR"
+printf "%s\n" "$PASSPHRASE" | fscrypt unlock "$TEST_DIR" --name="lab_protector"
 
 echo "11. Verifying access restored..."
 cat "$TEST_DIR/report.txt"
